@@ -54,13 +54,13 @@ def downloadrestrequest(rawrequest,name):
         except URLError, e:
                 print 'Got an error code:', e
 		outfile.close()
-		downloadrestrequest(rawrequest,path)
+		downloadrestrequest(rawrequest,name)
 
 
 	except socket.error:
 		print 'Got a socket error: retrying'
 		outfile.close()
-		downloadrestrequest(rawrequest,path)
+		downloadrestrequest(rawrequest,name)
 		
 
 options = arg_parser()
