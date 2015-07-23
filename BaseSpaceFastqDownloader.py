@@ -11,18 +11,19 @@ import optparse
 def arg_parser():
     cwd_dir = os.getcwd()
     parser = optparse.OptionParser()
-    parser.add_option( '-p', dest='runid', help='Project ID: required')
+    parser.add_option( '-p', dest='projid', help='Project ID: Run or Project ID required')
+    parser.add_option( '-r', dest='runid', help='Run ID: Run or Project ID required')
     parser.add_option( '-a', dest='accesstoken', help='Access Token: required')
     ( options, args ) = parser.parse_args()
    
     try:
-       if options.runid == None:
+       if (options.projid == None) == (options.runid == None):   # for bool is the equivalent of !(XOR)
              raise Exception
        if options.accesstoken == None:
 	     raise Exception
 
     except Exception:
-	    print("Usage: BaseSpaceFastqDownloader.py -p <ProjectID> -a <AccessToken>")
+	    print("Usage: BaseSpaceFastqDownloader.py (-p <ProjectID> XOR -r <RunID>) -a <AccessToken>")
 	    sys.exit()
     
     return options
@@ -65,13 +66,19 @@ def downloadrestrequest(rawrequest,name):
 
 options = arg_parser()
 
+ProjID = options.projid
 RunID = options.runid
 AccessToken = options.accesstoken
 
-request = 'http://api.basespace.illumina.com/v1pre3/projects/%s/samples?access_token=%s' %(RunID,AccessToken)
+if ProjID != None:
+  request = 'http://api.basespace.illumina.com/v1pre3/projects/%s/samples?access_token=%s' %(ProjID,AccessToken)
+elif RunID != None:
+  request = 'http://api.basespace.illumina.com/v1pre3/runs/%s/samples?access_token=%s' %(RunID,AccessToken)
 
 project_json_obj = restrequest(request)
 nsamples = len(project_json_obj['Response']['Items'])
+
+print nsamples
 
 hreflist = []
 namelist = []
