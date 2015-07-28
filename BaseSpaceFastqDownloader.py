@@ -55,6 +55,9 @@ def downloadrestrequest(rawrequest,name):
         except URLError, e:
                 print 'Got an error code:', e
 		outfile.close()
+                if e.code in (400, 401, 402, 403, 404):
+                  print "Exiting."
+                  sys.exit()
 		downloadrestrequest(rawrequest,name)
 
 
@@ -71,30 +74,61 @@ RunID = options.runid
 AccessToken = options.accesstoken
 
 if ProjID != None:
-  request = 'http://api.basespace.illumina.com/v1pre3/projects/%s/samples?access_token=%s' %(ProjID,AccessToken)
+  request = 'http://api.basespace.illumina.com/v1pre3/projects/%s/samples?Limit=500&access_token=%s' %(ProjID,AccessToken)
 elif RunID != None:
-  request = 'http://api.basespace.illumina.com/v1pre3/runs/%s/samples?access_token=%s' %(RunID,AccessToken)
+  request = 'http://api.basespace.illumina.com/v1pre3/runs/%s/samples?Limit=500&access_token=%s' %(RunID,AccessToken)
 
 project_json_obj = restrequest(request)
 nsamples = len(project_json_obj['Response']['Items'])
 
-print nsamples
-
 hreflist = []
 namelist = []
+samplenamelist = []
+readtypelist = []
+
+sample_dict = dict()
+
+#
+# For every sample ID, get a list of all the associated fastq files
+#
 
 for sampleindex in range(nsamples):
-	SampleId = project_json_obj['Response']['Items'][sampleindex]['Id']
-	request = 'https://api.basespace.illumina.com/v1pre3/samples/%s/files?access_token=%s' %(SampleId,AccessToken)
+        SampleId = project_json_obj['Response']['Items'][sampleindex]['SampleId'] 
+        PairedEnd = project_json_obj['Response']['Items'][sampleindex]['IsPairedEnd']
+
+        if SampleId not in sample_dict:
+          #
+          # hreflist
+          # namelist
+          # readtypelist
+          #
+          sample_dict[SampleId] = [ list(), list(), list() ]
+
+	Id = project_json_obj['Response']['Items'][sampleindex]['Id']
+	request = 'https://api.basespace.illumina.com/v1pre3/samples/%s/files?access_token=%s' %(Id,AccessToken)
 	sample_json_obj = restrequest(request)
+        #print sample_json_obj
 	nfiles = len(sample_json_obj['Response']['Items'])
 
-	for fileindex in range(nfiles):
-		hreflist.append(sample_json_obj['Response']['Items'][fileindex]['Href'])
-		namelist.append(sample_json_obj['Response']['Items'][fileindex]['Name'])
+        #print 'Paired End? %s'%(PairedEnd)
 
-print "Downloading %s files" %(len(hreflist))
-for index in range(len(hreflist)):
-	request = 'http://api.basespace.illumina.com/%s/content?access_token=%s'%(hreflist[index],AccessToken)
-	print 'downloading %s' %(namelist[index]) 
-	downloadrestrequest(request, namelist[index])
+#
+# TODO: Make this more object oriented so that it is clearer. Need to work out how to handle
+# single end vs paired end reads. Also need to check to see what happens when there are 
+# multiple files for a single library in a lane.
+#
+
+        if(PairedEnd):
+		sample_dict[SampleId][0].append(sample_json_obj['Response']['Items'][0]['Href'])
+		sample_dict[SampleId][1].append(sample_json_obj['Response']['Items'][0]['Name'])
+                sample_dict[SampleId][2].append(1)
+		sample_dict[SampleId][0].append(sample_json_obj['Response']['Items'][1]['Href'])
+		sample_dict[SampleId][1].append(sample_json_obj['Response']['Items'][1]['Name'])
+                sample_dict[SampleId][2].append(2)
+
+print "Samples: \n%s" % ("\n".join(sample_dict.keys()))
+for (sample, data) in sample_dict.iteritems():
+    for fileindex in range(len(data[0])):
+	request = 'http://api.basespace.illumina.com/%s/content?access_token=%s' % (data[0][fileindex], AccessToken)
+	print 'downloading sample %s file %s'%(data[0][fileindex], data[1][fileindex]) 
+	downloadrestrequest(request, data[1][fileindex])
