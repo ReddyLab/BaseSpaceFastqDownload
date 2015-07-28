@@ -45,21 +45,49 @@ elif run_id != None:
 print json_sample_list
 nsamples = len(json_sample_list['Response']['Items'])
 
-print nsamples
-
 hreflist = []
 namelist = []
+samplenamelist = []
+readtypelist = []
+
+sample_dict = dict()
+
+#
+# For every sample ID, get a list of all the associated fastq files
+#
 
 for sampleindex in range(nsamples):
-  sample_id = json_sample_list['Response']['Items'][sampleindex]['Id']
-  sample_json_obj = bs.file_list_request(sample_id)
-  nfiles = len(sample_json_obj['Response']['Items'])
+  file_id    = json_sample_list['Response']['Items'][sampleindex]['Id']
+  sample_id  = json_sample_list['Response']['Items'][sampleindex]['SampleId']
+  paired_end = json_sample_list['Response']['Items'][sampleindex]['IsPairedEnd']
 
-  for fileindex in range(nfiles):
-    hreflist.append(sample_json_obj['Response']['Items'][fileindex]['Href'])
-    namelist.append(sample_json_obj['Response']['Items'][fileindex]['Name'])
+  if sample_id not in sample_dict:
+    #
+    # hreflist
+    # namelist
+    # readtypelist
+    #
+    sample_dict[sample_id] = [ list(), list(), list() ]
 
-print "Downloading %s files" %(len(hreflist))
-for index in range(len(hreflist)): 
-  print 'downloading %s' %(namelist[index]) 
-  bs.file_request(hreflist[index], namelist[index])
+    sample_json_obj = bs.file_list_request(file_id)
+    nfiles = len(sample_json_obj['Response']['Items'])
+
+#
+# TODO: Make this more object oriented so that it is clearer. Need to work out how to handle
+# single end vs paired end reads. Also need to check to see what happens when there are 
+# multiple files for a single library in a lane.
+#
+    if paired_end:
+      sample_dict[sample_id][0].append(sample_json_obj['Response']['Items'][0]['Href'])
+      sample_dict[sample_id][1].append(sample_json_obj['Response']['Items'][0]['Name'])
+      sample_dict[sample_id][2].append(1)
+      sample_dict[sample_id][0].append(sample_json_obj['Response']['Items'][1]['Href'])
+      sample_dict[sample_id][1].append(sample_json_obj['Response']['Items'][1]['Name'])
+      sample_dict[sample_id][2].append(2)
+  
+print "Samples: \n%s" % ("\n".join(sample_dict.keys()))
+
+for (sample, data) in sample_dict.iteritems():
+  for fileindex in range(len(data[0])):
+    print 'downloading %s' % data[1][fileindex]
+    bs.file_request(data[0][fileindex], data[1][fileindex])
