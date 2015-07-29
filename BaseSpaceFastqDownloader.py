@@ -1,7 +1,10 @@
 #!/usr/local/bin/python
 
 from basespace_comm import BasespaceRestAPI
+from basespace_sample_list import BasespaceFile,BasespaceSample,BasespaceSampleList
+from collections import defaultdict
 import json
+import pprint
 import math
 import sys
 import os
@@ -21,13 +24,13 @@ def arg_parser():
       raise Exception
     if options.accesstoken == None:
       raise Exception
-
   except Exception:
     print("Usage: BaseSpaceFastqDownloader.py (-p <ProjectID> XOR -r <RunID>) -a <AccessToken>")
     sys.exit()
-    
   return options
 
+
+pp = pprint.PrettyPrinter(indent=4)
 options = arg_parser()
 
 project_id = options.projid
@@ -37,57 +40,28 @@ access_token = options.accesstoken
 bs = BasespaceRestAPI(access_token)
 
 if project_id != None:
-  print project_id
   json_sample_list = bs.project_request(project_id)
 elif run_id != None:
   json_sample_list = bs.run_request(run_id)
 
-print json_sample_list
-nsamples = len(json_sample_list['Response']['Items'])
+bs_samples = dict()
+for x in json_sample_list['Response']['Items']:
+  sample = BasespaceSample(x)
+  sample.set_files(bs.file_list_request(sample.uid))
 
-hreflist = []
-namelist = []
-samplenamelist = []
-readtypelist = []
+  if sample.sample_id not in bs_samples:
+    bsl = BasespaceSampleList(sample.sample_id, sample.is_paired_end)
+    bs_samples[sample.sample_id] = bsl
 
-sample_dict = dict()
-
+  bs_samples[sample.sample_id].add_sample(sample)
+   
 #
 # For every sample ID, get a list of all the associated fastq files
 #
-
-for sampleindex in range(nsamples):
-  file_id    = json_sample_list['Response']['Items'][sampleindex]['Id']
-  sample_id  = json_sample_list['Response']['Items'][sampleindex]['SampleId']
-  paired_end = json_sample_list['Response']['Items'][sampleindex]['IsPairedEnd']
-
-  if sample_id not in sample_dict:
-    #
-    # hreflist
-    # namelist
-    # readtypelist
-    #
-    sample_dict[sample_id] = [ list(), list(), list() ]
-
-    sample_json_obj = bs.file_list_request(file_id)
-    nfiles = len(sample_json_obj['Response']['Items'])
-
-#
-# TODO: Make this more object oriented so that it is clearer. Need to work out how to handle
-# single end vs paired end reads. Also need to check to see what happens when there are 
-# multiple files for a single library in a lane.
-#
-    if paired_end:
-      sample_dict[sample_id][0].append(sample_json_obj['Response']['Items'][0]['Href'])
-      sample_dict[sample_id][1].append(sample_json_obj['Response']['Items'][0]['Name'])
-      sample_dict[sample_id][2].append(1)
-      sample_dict[sample_id][0].append(sample_json_obj['Response']['Items'][1]['Href'])
-      sample_dict[sample_id][1].append(sample_json_obj['Response']['Items'][1]['Name'])
-      sample_dict[sample_id][2].append(2)
+for sample_id, sample_list in bs_samples.iteritems():
+  print "Downloading %s (%s and %s files for read1 and read2)" % (sample_id, len(sample_list.read_1_files), len(sample_list.read_2_files))
+  read1_filename = '%s_R1.fastq.gz' % sample_id;
+  read2_filename = '%s_R2.fastq.gz' % sample_id;
   
-print "Samples: \n%s" % ("\n".join(sample_dict.keys()))
-
-for (sample, data) in sample_dict.iteritems():
-  for fileindex in range(len(data[0])):
-    print 'downloading %s' % data[1][fileindex]
-    bs.file_request(data[0][fileindex], data[1][fileindex])
+  bs.file_request(read1_filename, sample_list.read_1_files)
+  bs.file_request(read2_filename, sample_list.read_2_files)

@@ -28,14 +28,19 @@ class BasespaceRestAPI:
     relative_addr = '/v1pre3/samples/%s/files' % sample_id
     return self._json_rest_request(relative_addr)
 
-  def file_request(self, file_id, name):
-    relative_addr = '/%s/content' % file_id
+  def file_request(self, name, files):
+    self._file_download(files[0], name)
+    for f in files[1::]:
+      self._file_download(f, name, 'ab')
+  
+  def _file_download(self, file_id, name, mode = 'wb'):
+    relative_addr = '/v1pre3/files/%s/content' % file_id
     try:
       response = self._rest_request(relative_addr)
     except requests.exceptions.Timeout, e:
       print "Timeout."
       self.file_request(relative_addr, name)
-    with open(name, 'wb') as fd:
+    with open(name, mode) as fd:
       for chunk in response.iter_content(1048576):
         fd.write(chunk)
 
