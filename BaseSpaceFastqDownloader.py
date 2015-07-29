@@ -1,6 +1,6 @@
 #!/usr/local/bin/python
 
-from urllib2 import Request, urlopen, URLError
+from basespace_comm import BasespaceRestAPI
 import json
 import math
 import sys
@@ -9,74 +9,41 @@ import socket
 import optparse
 
 def arg_parser():
-    cwd_dir = os.getcwd()
-    parser = optparse.OptionParser()
-    parser.add_option( '-p', dest='projid', help='Project ID: Run or Project ID required')
-    parser.add_option( '-r', dest='runid', help='Run ID: Run or Project ID required')
-    parser.add_option( '-a', dest='accesstoken', help='Access Token: required')
-    ( options, args ) = parser.parse_args()
+  cwd_dir = os.getcwd()
+  parser = optparse.OptionParser()
+  parser.add_option( '-p', dest='projid', help='Project ID: Run or Project ID required')
+  parser.add_option( '-r', dest='runid', help='Run ID: Run or Project ID required')
+  parser.add_option( '-a', dest='accesstoken', help='Access Token: required')
+  ( options, args ) = parser.parse_args()
    
-    try:
-       if (options.projid == None) == (options.runid == None):   # for bool is the equivalent of !(XOR)
-             raise Exception
-       if options.accesstoken == None:
-	     raise Exception
+  try:
+    if (options.projid == None) == (options.runid == None):   # for bool is the equivalent of !(XOR)
+      raise Exception
+    if options.accesstoken == None:
+      raise Exception
 
-    except Exception:
-	    print("Usage: BaseSpaceFastqDownloader.py (-p <ProjectID> XOR -r <RunID>) -a <AccessToken>")
-	    sys.exit()
+  except Exception:
+    print("Usage: BaseSpaceFastqDownloader.py (-p <ProjectID> XOR -r <RunID>) -a <AccessToken>")
+    sys.exit()
     
-    return options
-
-def restrequest(rawrequest):
-	request = Request(rawrequest)
-
-	try:
-        	response = urlopen(request)
-        	json_string = response.read()
-        	json_obj = json.loads(json_string)
-
-	except URLError, e:
-    		print 'Got an error code:', e
-		sys.exit()
-
-	return json_obj
-
-def downloadrestrequest(rawrequest,name):
-	request = (rawrequest)
-	outfile = open(name,'wb')
-
-        try:
-                response = urlopen(request,timeout=1)
-		
-		outfile.write(response.read())
-		outfile.close()
-
-        except URLError, e:
-                print 'Got an error code:', e
-		outfile.close()
-		downloadrestrequest(rawrequest,name)
-
-
-	except socket.error:
-		print 'Got a socket error: retrying'
-		outfile.close()
-		downloadrestrequest(rawrequest,name)
-		
+  return options
 
 options = arg_parser()
 
-ProjID = options.projid
-RunID = options.runid
-AccessToken = options.accesstoken
+project_id = options.projid
+run_id = options.runid
+access_token = options.accesstoken
 
-if ProjID != None:
-  request = 'http://api.basespace.illumina.com/v1pre3/projects/%s/samples?access_token=%s' %(ProjID,AccessToken)
-elif RunID != None:
-  request = 'http://api.basespace.illumina.com/v1pre3/runs/%s/samples?access_token=%s' %(RunID,AccessToken)
+bs = BasespaceRestAPI(access_token)
 
-project_json_obj = restrequest(request)
-nsamples = len(project_json_obj['Response']['Items'])
+if project_id != None:
+  print project_id
+  json_sample_list = bs.project_request(project_id)
+elif run_id != None:
+  json_sample_list = bs.run_request(run_id)
+
+print json_sample_list
+nsamples = len(json_sample_list['Response']['Items'])
 
 print nsamples
 
@@ -84,17 +51,15 @@ hreflist = []
 namelist = []
 
 for sampleindex in range(nsamples):
-	SampleId = project_json_obj['Response']['Items'][sampleindex]['Id']
-	request = 'https://api.basespace.illumina.com/v1pre3/samples/%s/files?access_token=%s' %(SampleId,AccessToken)
-	sample_json_obj = restrequest(request)
-	nfiles = len(sample_json_obj['Response']['Items'])
+  sample_id = json_sample_list['Response']['Items'][sampleindex]['Id']
+  sample_json_obj = bs.file_list_request(sample_id)
+  nfiles = len(sample_json_obj['Response']['Items'])
 
-	for fileindex in range(nfiles):
-		hreflist.append(sample_json_obj['Response']['Items'][fileindex]['Href'])
-		namelist.append(sample_json_obj['Response']['Items'][fileindex]['Name'])
+  for fileindex in range(nfiles):
+    hreflist.append(sample_json_obj['Response']['Items'][fileindex]['Href'])
+    namelist.append(sample_json_obj['Response']['Items'][fileindex]['Name'])
 
 print "Downloading %s files" %(len(hreflist))
-for index in range(len(hreflist)):
-	request = 'http://api.basespace.illumina.com/%s/content?access_token=%s'%(hreflist[index],AccessToken)
-	print 'downloading %s' %(namelist[index]) 
-	downloadrestrequest(request, namelist[index])
+for index in range(len(hreflist)): 
+  print 'downloading %s' %(namelist[index]) 
+  bs.file_request(hreflist[index], namelist[index])
